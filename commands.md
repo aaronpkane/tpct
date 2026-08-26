@@ -27,3 +27,7 @@ result = overrides.reassign_task_instructor_by_name(
     conn, request_id=1, task_name="1-06: Defense and Control Group 3", new_instructor_name="ME3 Wood"
 )
 print(result)
+
+### Running app
+
+python -m streamlit run app.py
