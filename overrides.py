@@ -96,7 +96,7 @@ def reassign_task_instructor(conn, request_id, task_id, new_instructor_id):
         """,
         (request_id, task_id)
     )
-    old_instructors = cur.fetchall()  # list of (instructor_id, name) — normally just one
+    old_instructors = cur.fetchall()  # list of (instructor_id, name)
  
     if not old_instructors:
         return {
