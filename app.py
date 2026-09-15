@@ -1,3 +1,15 @@
+"""
+TPCT - Streamlit UI
+--------------------
+The actual input form: pick a competency, date range, daily start
+time, allowed days of week, and available instructors. Generates
+a plan (or infeasibility report), lets you view/override it, and
+download a PDF.
+
+Usage:
+    streamlit run app.py
+"""
+
 import sqlite3
 import os
 from datetime import date, timedelta, time, datetime
@@ -269,6 +281,71 @@ with tab_generate:
                     st.rerun()
                 else:
                     st.error(override_result["error"])
+
+            # --- Move a session to a different date/time ---
+            st.subheader("Move a Session to a Different Date/Time")
+            st.caption(
+                "Reschedules ONE specific session — no check against blackout dates or "
+                "other commitments. Useful for a single session that has to shift, or a "
+                "standalone recurring requirement (like a quarterly drill) that needs to "
+                "land on a specific date."
+            )
+
+            move_task_name = st.selectbox(
+                "Task", list(task_name_to_id.keys()), key="move_task"
+            )
+            move_task_id = task_name_to_id[move_task_name]
+            segment_options = overrides.get_segments_for_task(conn, st.session_state.request_id, move_task_id)
+
+            if segment_options:
+                segment_labels = [
+                    f"{seg_date} {start_t}-{end_t} ({hrs:g}h)"
+                    for _, seg_date, start_t, end_t, hrs in segment_options
+                ]
+                segment_label_to_id = {
+                    label: seg[0] for label, seg in zip(segment_labels, segment_options)
+                }
+
+                mcol1, mcol2, mcol3, mcol4 = st.columns([2, 1.2, 1, 1])
+                with mcol1:
+                    move_segment_label = st.selectbox(
+                        "Which session (if the task spans more than one day)",
+                        segment_labels, key="move_segment_select"
+                    )
+                with mcol2:
+                    move_new_date = st.date_input("New date", key="move_new_date")
+                with mcol3:
+                    current_seg = next(
+                        seg for seg in segment_options if seg[0] == segment_label_to_id[move_segment_label]
+                    )
+                    move_new_start = st.time_input(
+                        "New start time", value=datetime.strptime(current_seg[2], "%H:%M").time(),
+                        key="move_new_start"
+                    )
+                with mcol4:
+                    move_new_end = st.time_input(
+                        "New end time", value=datetime.strptime(current_seg[3], "%H:%M").time(),
+                        key="move_new_end"
+                    )
+
+                if st.button("Move This Session"):
+                    move_result = overrides.move_segment(
+                        conn,
+                        segment_label_to_id[move_segment_label],
+                        move_new_date.isoformat(),
+                        move_new_start.strftime("%H:%M"),
+                        move_new_end.strftime("%H:%M"),
+                    )
+                    if move_result["success"]:
+                        st.success(
+                            f"Moved '{move_result['task_name']}' to {move_result['new_date']} "
+                            f"{move_result['new_start_time']}-{move_result['new_end_time']}."
+                        )
+                        st.rerun()
+                    else:
+                        st.error(move_result["error"])
+            else:
+                st.info("No sessions found for this task.")
 
             # --- PDF download ---
             st.subheader("Download")
@@ -846,6 +923,69 @@ with tab_concurrent:
                     st.rerun()
                 else:
                     st.error(override_result["error"])
+
+            st.subheader("Move a Session to a Different Date/Time")
+            st.caption(
+                "Reschedules ONE specific session within the competency you pick above — "
+                "no check against blackout dates or other commitments in the batch. "
+                "Useful for a standalone recurring requirement (like a quarterly drill) "
+                "that needs to land on a specific date."
+            )
+            move_task_choice = st.selectbox(
+                "Task", list(override_task_name_to_id.keys()), key="concurrent_move_task"
+            )
+            move_task_id = override_task_name_to_id[move_task_choice]
+            concurrent_segment_options = overrides.get_segments_for_task(conn, override_request_id, move_task_id)
+
+            if concurrent_segment_options:
+                concurrent_segment_labels = [
+                    f"{seg_date} {start_t}-{end_t} ({hrs:g}h)"
+                    for _, seg_date, start_t, end_t, hrs in concurrent_segment_options
+                ]
+                concurrent_segment_label_to_id = {
+                    label: seg[0] for label, seg in zip(concurrent_segment_labels, concurrent_segment_options)
+                }
+
+                mcol1, mcol2, mcol3, mcol4 = st.columns([2, 1.2, 1, 1])
+                with mcol1:
+                    concurrent_move_segment_label = st.selectbox(
+                        "Which session", concurrent_segment_labels, key="concurrent_move_segment_select"
+                    )
+                current_concurrent_seg = next(
+                    seg for seg in concurrent_segment_options
+                    if seg[0] == concurrent_segment_label_to_id[concurrent_move_segment_label]
+                )
+                with mcol2:
+                    concurrent_move_new_date = st.date_input("New date", key="concurrent_move_new_date")
+                with mcol3:
+                    concurrent_move_new_start = st.time_input(
+                        "New start time", value=datetime.strptime(current_concurrent_seg[2], "%H:%M").time(),
+                        key="concurrent_move_new_start"
+                    )
+                with mcol4:
+                    concurrent_move_new_end = st.time_input(
+                        "New end time", value=datetime.strptime(current_concurrent_seg[3], "%H:%M").time(),
+                        key="concurrent_move_new_end"
+                    )
+
+                if st.button("Move This Session", key="concurrent_move_button"):
+                    move_result = overrides.move_segment(
+                        conn,
+                        concurrent_segment_label_to_id[concurrent_move_segment_label],
+                        concurrent_move_new_date.isoformat(),
+                        concurrent_move_new_start.strftime("%H:%M"),
+                        concurrent_move_new_end.strftime("%H:%M"),
+                    )
+                    if move_result["success"]:
+                        st.success(
+                            f"Moved '{move_result['task_name']}' to {move_result['new_date']} "
+                            f"{move_result['new_start_time']}-{move_result['new_end_time']}."
+                        )
+                        st.rerun()
+                    else:
+                        st.error(move_result["error"])
+            else:
+                st.info("No sessions found for this task.")
 
             st.subheader("Download")
             dcol1, dcol2 = st.columns(2)
