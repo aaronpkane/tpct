@@ -889,14 +889,27 @@ with tab_concurrent:
                 "Pick which competency's plan you're adjusting, then the task and new instructor. "
                 "No qualification check is applied."
             )
+
+            # Label by BOTH competency name and its date range, and map that
+            # label directly to a request_id — matching on name alone breaks
+            # the moment the same competency appears more than once in a
+            # batch (e.g. the same quarterly drill added four times).
+            batch_component_dates = {
+                request_id: (start_date, end_date)
+                for request_id, _, start_date, end_date, _ in pdfexport.get_batch_components(conn, batch_id)
+            }
+            component_label_to_request_id = {}
+            for r in feasible_results:
+                start_date, end_date = batch_component_dates[r["request_id"]]
+                label = f"{r['competency_name']} ({start_date} to {end_date})"
+                component_label_to_request_id[label] = r["request_id"]
+
             rcol1, rcol2, rcol3 = st.columns([2, 2, 2])
             with rcol1:
                 override_comp_choice = st.selectbox(
-                    "Competency", [r["competency_name"] for r in feasible_results], key="concurrent_override_comp"
+                    "Competency", list(component_label_to_request_id.keys()), key="concurrent_override_comp"
                 )
-            override_request_id = next(
-                r["request_id"] for r in feasible_results if r["competency_name"] == override_comp_choice
-            )
+            override_request_id = component_label_to_request_id[override_comp_choice]
             override_task_options = get_tasks_for_request(conn, override_request_id)
             override_task_name_to_id = {name: tid for tid, name in override_task_options}
             with rcol2:
